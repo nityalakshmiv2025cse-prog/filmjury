@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FilmJury Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eceef2;--card:#fff;--ink:#18202f;--mute:#5d6678;--line:#d9dde5;--teal:#0e5a63;--amber:#e9a10f;--red:#b3261e;--ok:#1d7a46}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Bricolage Grotesque",system-ui,sans-serif}
+.wrap{max-width:1180px;margin:0 auto;padding:28px 20px 60px}
+header{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:24px}
+h1{font-size:2.6rem;line-height:1;margin:0;font-weight:800;letter-spacing:-.03em}
+header p{margin:6px 0 0;color:var(--mute)}
+.stats{display:flex;gap:28px}
+.stats div{text-align:right}
+.stats b{display:block;font-size:1.7rem;font-weight:800;line-height:1}
+.stats span{font-size:.85rem;color:var(--mute)}
+h2{font-size:1.15rem;margin:0 0 14px;font-weight:600}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:20px}
+.board{margin-bottom:20px}
+.row{display:grid;grid-template-columns:52px 1fr 90px;gap:14px;align-items:center;padding:12px 0;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:0}
+.rank{font-size:2.2rem;font-weight:800;color:var(--line);line-height:1;text-align:center}
+.row.first .rank{color:var(--amber)}
+.name{font-weight:600}.name small{color:var(--mute);font-weight:400;margin-left:6px}
+.track{height:10px;background:var(--bg);border-radius:6px;margin-top:8px;overflow:hidden}
+.fill{height:100%;background:var(--teal);border-radius:6px;transition:width .6s}
+.row.first .fill{background:var(--amber)}
+.avg{text-align:right;font-size:1.5rem;font-weight:800}
+.avg small{display:block;font-size:.75rem;color:var(--mute);font-weight:400}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr);gap:20px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}.row{grid-template-columns:40px 1fr 70px}}
+.tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
+.tabs button{border:1px solid var(--line);background:var(--card);color:var(--ink);padding:6px 12px;border-radius:20px;font:inherit;font-size:.9rem;cursor:pointer}
+.tabs button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+label{display:block;font-size:.9rem;color:var(--mute);margin:12px 0 4px}
+input,select{width:100%;padding:9px 10px;border:1px solid var(--line);border-radius:7px;font:inherit;background:#fff;color:var(--ink)}
+.checks label{display:flex;gap:8px;align-items:center;color:var(--ink);margin:6px 0}
+.checks input{width:auto}
+.crit{display:grid;grid-template-columns:1fr 90px;gap:10px;align-items:center;margin-top:8px}
+.crit span small{color:var(--mute)}
+.go{margin-top:18px;background:var(--teal);color:#fff;border:0;padding:10px 18px;border-radius:7px;font:inherit;font-weight:600;cursor:pointer}
+:focus-visible{outline:3px solid var(--amber);outline-offset:2px}
+table{width:100%;border-collapse:collapse;font-size:.93rem}
+th{text-align:left;color:var(--mute);font-weight:400;padding:6px 8px;border-bottom:1px solid var(--line)}
+td{padding:9px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+.tag{display:inline-block;background:var(--bg);padding:1px 8px;border-radius:10px;font-size:.8rem;margin:0 4px 4px 0}
+.empty{color:var(--mute);padding:8px 0}
+.sub{margin:22px 0 8px;font-size:1rem;font-weight:600}
+#toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:11px 18px;border-radius:8px;color:#fff;display:none;max-width:90vw;z-index:9}
+#toast.ok{background:var(--ok)}#toast.err{background:var(--red)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>FilmJury</h1>
+      <p>Short film contest: entries, judges and scores in one place.</p>
+    </div>
+    <div class="stats" id="stats"></div>
+  </header>
+
+  <section class="card board">
+    <h2>Leaderboard</h2>
+    <div id="board"></div>
+  </section>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Manage</h2>
+      <div class="tabs" id="tabs"></div>
+      <form id="form"></form>
+    </section>
+
+    <section class="card">
+      <h2>Entries</h2>
+      <div style="overflow-x:auto"><table id="entries"></table></div>
+      <div class="sub">Judges</div>
+      <div id="judges"></div>
+      <div class="sub">Scoring criteria</div>
+      <div id="criteria"></div>
+    </section>
+  </div>
+</div>
+<div id="toast"></div>
+
+<script>
+const S = {entries: [], judges: [], criteria: [], board: []};
+let tab = 'entry';
+const $ = id => document.getElementById(id);
+const safe = u => /^https?:\/\//i.test(u) ? esc(u) : '#';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function toast(msg, ok) {
+  const t = $('toast');
+  t.textContent = msg; t.className = ok ? 'ok' : 'err'; t.style.display = 'block';
+  clearTimeout(toast.h); toast.h = setTimeout(() => t.style.display = 'none', 3500);
+}
+
+async function api(path, method = 'GET', body) {
+  const r = await fetch(path, {method, headers: {'Content-Type': 'application/json'}, body: body ? JSON.stringify(body) : undefined});
+  let data = null;
+  try { data = await r.json(); } catch (e) {}
+  if (!r.ok) throw new Error(data ? (data.error || Object.values(data).join(', ')) : 'Request failed (' + r.status + ')');
+  return data;
+}
+
+async function load() {
+  try {
+    [S.entries, S.judges, S.criteria, S.board] = await Promise.all([
+      api('/api/entries'), api('/api/judges'), api('/api/criteria'), api('/api/leaderboard')
+    ]);
+    render();
+  } catch (e) { toast('Cannot reach the server. Is the app running on port 8080?'); }
+}
+
+function render() {
+  $('stats').innerHTML = [['Entries', S.entries.length], ['Judges', S.judges.length], ['Criteria', S.criteria.length]]
+    .map(([l, n]) => `<div><b>${n}</b><span>${l}</span></div>`).join('');
+
+  const possible = S.criteria.reduce((a, c) => a + c.maxScore, 0) || Math.max(1, ...S.board.map(b => b.averageScore));
+  $('board').innerHTML = S.board.length ? S.board.map(b => `
+    <div class="row ${b.rank === 1 ? 'first' : ''}">
+      <div class="rank">${b.rank}</div>
+      <div><div class="name">${esc(b.title)}<small>${esc(b.teamName)}</small></div>
+        <div class="track"><div class="fill" style="width:${Math.min(100, b.averageScore / possible * 100)}%"></div></div></div>
+      <div class="avg">${b.averageScore.toFixed(1)}<small>of ${possible}</small></div>
+    </div>`).join('') : '<div class="empty">No entries yet. Add one under Manage.</div>';
+
+  const avg = Object.fromEntries(S.board.map(b => [b.entryId, b.averageScore]));
+  $('entries').innerHTML = S.entries.length ? `<tr><th>Title</th><th>Team</th><th>Genre</th><th>Judges</th><th>Avg</th></tr>` +
+    S.entries.map(e => `<tr>
+      <td><a href="${safe(e.videoLink)}" target="_blank" rel="noopener">${esc(e.title)}</a></td>
+      <td>${esc(e.teamName)}</td><td>${esc(e.genre)}</td>
+      <td>${(e.assignedJudges || []).map(j => `<span class="tag">${esc(j.name)}</span>`).join('') || '<span class="empty">none</span>'}</td>
+      <td>${(avg[e.id] ?? 0).toFixed(1)}</td></tr>`).join('') : '<tr><td class="empty">No entries yet.</td></tr>';
+
+  $('judges').innerHTML = S.judges.map(j => `<span class="tag">${esc(j.name)} (${esc(j.email)})</span>`).join('') || '<div class="empty">No judges yet.</div>';
+  $('criteria').innerHTML = S.criteria.map(c => `<span class="tag">${esc(c.name)}: max ${c.maxScore}</span>`).join('') || '<div class="empty">No criteria yet.</div>';
+  renderTabs(); renderForm();
+}
+
+const TABS = {entry: 'Add entry', judge: 'Add judge', criterion: 'Add criterion', assign: 'Assign entries', score: 'Submit scores'};
+
+function renderTabs() {
+  $('tabs').innerHTML = Object.entries(TABS).map(([k, v]) => `<button type="button" data-tab="${k}" class="${k === tab ? 'on' : ''}">${v}</button>`).join('');
+}
+
+const opts = (list, f) => list.map(x => `<option value="${x.id}">${esc(f(x))}</option>`).join('');
+
+function renderForm() {
+  const f = $('form'); let h = '';
+  if (tab === 'entry') h = `
+    <label>Title</label><input name="title" required>
+    <label>Genre</label><input name="genre" required>
+    <label>Video link</label><input name="videoLink" required>
+    <label>Team name</label><input name="teamName" required>
+    <button class="go">Add entry</button>`;
+  if (tab === 'judge') h = `
+    <label>Name</label><input name="name" required>
+    <label>Email</label><input name="email" type="email" required>
+    <button class="go">Add judge</button>`;
+  if (tab === 'criterion') h = `
+    <label>Name</label><input name="name" required>
+    <label>Maximum score</label><input name="maxScore" type="number" min="1" value="10" required>
+    <button class="go">Add criterion</button>`;
+  if (tab === 'assign') h = S.judges.length && S.entries.length ? `
+    <label>Judge</label><select name="judgeId">${opts(S.judges, j => j.name)}</select>
+    <label>Entries to review</label>
+    <div class="checks">${S.entries.map(e => `<label><input type="checkbox" name="entryIds" value="${e.id}">${esc(e.title)}</label>`).join('')}</div>
+    <button class="go">Assign entries</button>` : '<div class="empty">Add at least one judge and one entry first.</div>';
+  if (tab === 'score') h = S.entries.length && S.criteria.length ? `
+    <label>Entry</label><select name="entryId" id="scoreEntry">${opts(S.entries, e => e.title)}</select>
+    <label>Judge (assigned to this entry)</label><select name="judgeId" id="scoreJudge"></select>
+    <label>Scores</label>
+    ${S.criteria.map(c => `<div class="crit"><span>${esc(c.name)} <small>max ${c.maxScore}</small></span><input type="number" name="c${c.id}" min="1" max="${c.maxScore}"></div>`).join('')}
+    <button class="go">Submit scores</button>` : '<div class="empty">Add an entry and at least one criterion first.</div>';
+  f.innerHTML = h;
+  if (tab === 'score' && $('scoreEntry')) fillJudges();
+}
+
+function fillJudges() {
+  const e = S.entries.find(x => x.id == $('scoreEntry').value);
+  const js = e ? e.assignedJudges || [] : [];
+  $('scoreJudge').innerHTML = js.length ? opts(js, j => j.name) : '<option value="">No judge assigned yet</option>';
+}
+
+$('tabs').addEventListener('click', e => { const t = e.target.dataset.tab; if (t) { tab = t; renderTabs(); renderForm(); } });
+$('form').addEventListener('change', e => { if (e.target.id === 'scoreEntry') fillJudges(); });
+
+$('form').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const fd = new FormData(ev.target); const v = Object.fromEntries(fd);
+  try {
+    if (tab === 'entry') await api('/api/entries', 'POST', v);
+    if (tab === 'judge') await api('/api/judges', 'POST', v);
+    if (tab === 'criterion') await api('/api/criteria', 'POST', {name: v.name, maxScore: +v.maxScore});
+    if (tab === 'assign') {
+      const ids = fd.getAll('entryIds').map(Number);
+      if (!ids.length) return toast('Tick at least one entry to assign.');
+      await api(`/api/judges/${v.judgeId}/assignments`, 'POST', {entryIds: ids});
+    }
+    if (tab === 'score') {
+      const scores = S.criteria.filter(c => v['c' + c.id]).map(c => ({criterionId: c.id, score: +v['c' + c.id]}));
+      if (!v.judgeId) return toast('Assign a judge to this entry first.');
+      if (!scores.length) return toast('Enter at least one score.');
+      await api(`/api/entries/${v.entryId}/scores`, 'POST', {judgeId: +v.judgeId, scores});
+    }
+    toast('Saved', true);
+    await load();
+  } catch (e) { toast(e.message); }
+});
+
+load();
+</script>
+</body>
+</html>
